@@ -1,61 +1,40 @@
 package main
 
 import (
+	"IdeaProjects/go-backend/pkg/websockets"
 	"fmt"
+	// "log"
 	"net/http"
-	"log"
 
-	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize: 1024,
-	WriteBufferSize: 1024,
+func serveWs(pool *websockets.Pool, w http.ResponseWriter, r *http.Request) {
+    fmt.Println("WebSocket Endpoint Hit")
+    conn, err := websockets.Upgrade(w, r)
+    if err != nil {
+        fmt.Fprintf(w, "%+v\n", err)
+    }
 
+    client := &websockets.Client{
+        Conn: conn,
+        Pool: pool,
+    }
 
-CheckOrigin: func(r *http.Request) bool {return true},
+    pool.Register <- client
+    client.Read()
 }
 
+func setupRoutes() {
+    pool := websockets.NewPool()
+    go pool.Start()
 
-
-func reader(conn *websocket.Conn){
-	for {
-		messageType, p, err := conn.ReadMessage()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		fmt.Println(string(p))
-
-		if err := conn.WriteMessage(messageType, p); err != nil {
-			log.Println(err)
-		}
-	}
+    http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+        serveWs(pool, w, r)
+    })
 }
 
-func serveWs(w http.ResponseWriter, r *http.Request){
-	fmt.Println(r.Host)
-
-	ws, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-	}
-
-	reader(ws)
+func main() {
+    fmt.Println("Distributed Chat App v0.01")
+    setupRoutes()
+    http.ListenAndServe(":8080", nil)
 }
-
-
-func setupRoutes(){
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request){
-		fmt.Fprint(w, "Simple Server")
-	})
-	http.HandleFunc("/ws", serveWs)
-
-}
-
-func main(){
-	fmt.Println("Chat App v0.01")
-	setupRoutes()
-	http.ListenAndServe(":8080", nil)
-	
-	}
